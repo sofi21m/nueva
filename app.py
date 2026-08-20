@@ -2,7 +2,6 @@ import streamlit as st
 import os
 import time
 import glob
-import base64
 import re
 from gtts import gTTS
 from PIL import Image
@@ -17,28 +16,37 @@ st.set_page_config(
 # Crear directorio temporal si no existe
 os.makedirs("temp", exist_ok=True)
 
-# 2. Barra lateral (Sidebar)
+# 2. Barra lateral (Sidebar) con controles mejorados
 with st.sidebar:
-    st.subheader("Configuración")
-    st.write("Escribe y/o selecciona texto para ser escuchado.")
+    st.subheader("⚙️ Configuración del Audio")
     
     option_lang = st.selectbox(
-        "Selecciona el lenguaje",
-        ("Español", "English")
+        "Idioma / Acento",
+        ("Español (Latinoamérica)", "Español (España)", "English (US)", "English (UK)")
     )
-    lg = 'es' if option_lang == "Español" else 'en'
+    
+    # Mapeo de idioma y acento (tld)
+    lang_config = {
+        "Español (Latinoamérica)": ("es", "com.mx"),
+        "Español (España)": ("es", "es"),
+        "English (US)": ("en", "com"),
+        "English (UK)": ("en", "co.uk")
+    }
+    lg, tld_code = lang_config[option_lang]
+
+    # Control de velocidad
+    slow_speed = st.checkbox("Hablar despacio", value=False)
 
 # 3. Encabezado e Imagen
-st.title("Conversión de Texto a Audio")
+st.title("🎙️ Conversión de Texto a Audio")
 
-# Cargar la nueva imagen fot2.jpg
 if os.path.exists('fot2.jpg'):
     image = Image.open('fot2.jpg')
     st.image(image, width=350)
 else:
     st.warning("No se encontró la imagen 'fot2.jpg' en el directorio.")
 
-# Texto de la fábula
+# Texto de ejemplo
 fabula_texto = (
     "¡Ay! -dijo el ratón-. El mundo se hace cada día más pequeño. "
     "Al principio era tan grande que le tenía miedo. Corría y corría y por cierto que me alegraba "
@@ -48,25 +56,35 @@ fabula_texto = (
     "Franz Kafka."
 )
 
-st.subheader("Una pequeña Fábula.")
+st.subheader("📖 Una pequeña Fábula")
 st.write(fabula_texto)
+
+# Cargar archivo de texto externo
+uploaded_file = st.file_uploader("O sube un archivo de texto (.txt)", type=["txt"])
+file_text = ""
+if uploaded_file is not None:
+    file_text = uploaded_file.read().decode("utf-8")
 
 # Inicializar la variable de texto en la sesión
 if "user_text" not in st.session_state:
     st.session_state["user_text"] = ""
 
-# Funcionalidad: Botón para copiar la fábula al área de texto automáticamente
 if st.button("📋 Usar el texto de la fábula"):
     st.session_state["user_text"] = fabula_texto
 
-# Entrada de texto del usuario
-st.markdown("Quieres escucharlo?, copia o escribe el texto abajo:")
-text = st.text_area("Ingrese El texto a escuchar.", value=st.session_state["user_text"], height=120)
+# Determinar el valor del texto a mostrar
+current_text = file_text if file_text else st.session_state["user_text"]
 
-# Función de conversión de texto a voz
-def text_to_speech(text_input, lang):
-    tts = gTTS(text=text_input, lang=lang)
-    # Generar un nombre de archivo seguro eliminando caracteres especiales
+st.markdown("### ✍️ Texto a convertir:")
+text = st.text_area("Ingrese el texto a escuchar:", value=current_text, height=130)
+
+# Mostrar contador de caracteres
+if text:
+    st.caption(f"Número de caracteres: {len(text)}")
+
+# Función de conversión de texto a voz con tld y velocidad
+def text_to_speech(text_input, lang, tld, slow):
+    tts = gTTS(text=text_input, lang=lang, tld=tld, slow=slow)
     clean_name = re.sub(r'[^\w\s]', '', text_input[:15]).strip().replace(" ", "_")
     my_file_name = clean_name if clean_name else "audio"
     file_path = f"temp/{my_file_name}.mp3"
@@ -74,24 +92,28 @@ def text_to_speech(text_input, lang):
     return file_path
 
 # Botón principal para generar el audio
-if st.button("Convertir a Audio"):
+if st.button("🔊 Convertir a Audio"):
     if not text.strip():
-        st.warning("Por favor, ingresa algún texto.")
+        st.warning("Por favor, ingresa o sube algún texto.")
     else:
-        audio_path = text_to_speech(text, lg)
-        
-        with open(audio_path, "rb") as audio_file:
-            audio_bytes = audio_file.read()
-        
-        st.markdown("## Tú audio:")
-        st.audio(audio_bytes, format="audio/mp3", start_time=0)
+        with st.spinner("Generando audio..."):
+            audio_path = text_to_speech(text, lg, tld_code, slow_speed)
+            
+            with open(audio_path, "rb") as audio_file:
+                audio_bytes = audio_file.read()
+            
+            st.markdown("## Tú audio:")
+            st.audio(audio_bytes, format="audio/mp3", start_time=0)
 
-        # Enlace para descargar el archivo MP3
-        bin_str = base64.b64encode(audio_bytes).decode()
-        download_href = f'<a href="data:application/octet-stream;base64,{bin_str}" download="audio.mp3">Descargar Audio File</a>'
-        st.markdown(download_href, unsafe_allow_html=True)
+            # Botón nativo de descarga de Streamlit
+            st.download_button(
+                label="📥 Descargar Audio MP3",
+                data=audio_bytes,
+                file_name="audio.mp3",
+                mime="audio/mp3"
+            )
 
-# Mantenimiento: Elimina archivos creados hace más de N días
+# Mantenimiento de archivos temporales
 def remove_files(n_days):
     mp3_files = glob.glob("temp/*.mp3")
     if mp3_files:
