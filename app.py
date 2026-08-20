@@ -38,10 +38,14 @@ with st.sidebar:
 # 3. Encabezado e Imagen
 st.title("🎙️ Generador de Audio con IA")
 
-header_image_path = 'gTTS_header.png'
+# Ruta actualizada a la nueva imagen
+header_image_path = 'Gemini_Generated_Image_9ye4ag9ye4ag9ye4.jpg'
+
 if os.path.exists(header_image_path):
     image = Image.open(header_image_path)
     st.image(image, use_container_width=True)
+else:
+    st.warning(f"No se encontró la imagen '{header_image_path}' en el directorio.")
 
 # Texto principal creativo
 texto_cool = (
